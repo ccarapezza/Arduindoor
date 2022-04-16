@@ -86,7 +86,7 @@ void alarmLoop(){
     (currentAlarm->hour < (int)now.Hour() || currentAlarm->minute <= (int)now.Minute())){
       currentAlarm->executed = true;
       Serial.println(currentAlarm->name+" - Executed at: "+getCurrentDate());
-      currentAlarm->execute(0);
+      currentAlarm->execute(1);
     }
     
     currentAlarm = currentAlarm->next;

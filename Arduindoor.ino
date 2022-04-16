@@ -187,27 +187,27 @@ void setup(void){
   });
 
   server.on("/new", [](){
+    bool validHour = false;
+    bool validMinutes = false;
+    bool validName = false;
     int hour = NULL;
     int minutes = NULL;
     String name = "";
     for (uint8_t i=0; i<server.args(); i++){
       if(server.argName(i).equalsIgnoreCase("hour")){
-        if(server.argName(i).equals("0")||server.argName(i).equals("00")){
-          hour = 0;
-        }else{
+        if(isValidNumber(server.arg(i))){
           hour = server.arg(i).toInt();
-          if(hour==0){
-            hour = NULL;
+          if(hour>=0&&hour<=23){
+            validHour = true;
           }
         }
       }
       if(server.argName(i).equalsIgnoreCase("minutes")){
-        if(server.argName(i).equals("0")||server.argName(i).equals("00")){
-          minutes = 0;
-        }else{
+        Serial.println(server.arg(i));
+        if(isValidNumber(server.arg(i))){
           minutes = server.arg(i).toInt();
-          if(minutes==0){
-            minutes = NULL;
+          if(minutes>=0&&minutes<=59){
+            validMinutes = true;
           }
         }
       }
@@ -215,6 +215,7 @@ void setup(void){
         String nameParam = server.arg(i);
         nameParam.trim();
         if(!nameParam.equals("")){
+          validName = true;
           name = nameParam;
         }
       }
@@ -225,11 +226,11 @@ void setup(void){
     Serial.println(minutes);
     Serial.print("name param ");
     Serial.println(name);
-    if(hour == NULL || minutes == NULL || name == NULL){
-      server.send(200, "text/plain", "Params required...");
-    }else{
+    if(validHour && validMinutes && validName){
       int alarmCount = addAlarm(name, hour, minutes, &setAll);
       server.send(200, "text/plain", "Alarm added - "+String(alarmCount));
+    }else{
+      server.send(200, "text/plain", "Params required...");
     }
   });
 
@@ -244,6 +245,16 @@ void setup(void){
 
   server.begin();
   Serial.println("HTTPS server started");
+}
+
+boolean isValidNumber(String str){
+  boolean isNum=false;
+  for(byte i=0;i<str.length();i++)
+  {
+    isNum = isDigit(str.charAt(i));
+    if(!isNum) return false;
+  }
+  return isNum;
 }
 
 void setAll(int value){
