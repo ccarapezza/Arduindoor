@@ -3,7 +3,7 @@
 #include <RtcDS1302.h>
 #include <LinkedList.h>
 
-ThreeWire myWire(0, 14, 4);  // IO, SCLK, CE
+ThreeWire myWire(D4, D5, D3);  // IO, SCLK, CE
 RtcDS1302<ThreeWire> Rtc(myWire);
 
 #define countof(a) (sizeof(a) / sizeof(a[0]))

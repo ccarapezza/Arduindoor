@@ -18,6 +18,8 @@
 #include <umm_malloc/umm_heap_select.h>
 #include <RtcDateTime.h>
 #include "clock.h"
+#include "mpx_manager.h"
+#include "wire_manager.h"
 
 #ifndef STASSID
 #define STASSID "ChoriNet 2.4Ghz"
@@ -95,32 +97,21 @@ WiFiUDP ntpUDP;
 // additionaly you can specify the update interval (in milliseconds).
 NTPClient timeClient(ntpUDP, NTP_SERVER, GMT_TIME_ZONE * 3600 , 60000);
 
-const int CH1 = 12;
-const int CH2 = 13;
-const int CH3 = 15;
-const int CH4 = 2;
-//const int CH5 = 1;
-//const int CH6 = 10;
-const int CH7 = 16;
-const int CH8 = 5;
-
 void handleRoot() {
-  digitalWrite(CH1, 1);
-  digitalWrite(CH2, 1);
-  digitalWrite(CH3, 1);
-  digitalWrite(CH4, 1);
-  digitalWrite(CH7, 1);
-  digitalWrite(CH8, 1);
+  for (byte i = 0; i < 8; i++)
+  {
+    muxDigitalWrite(i, LOW);
+  }
+
   timeClient.update();
   RtcDateTime rtcNow = getCurrentRtcDateTime();
   long diff = (long)rtcNow.Epoch32Time()-(long)timeClient.getEpochTime();
   server.send(200, "text/plain", "Hello from esp8266 over HTTPS! - RTC Date: "+getCurrentDate()+" - Internet Epoch Time: "+timeClient.getFormattedTime()+" || RTC Date: "+rtcNow.Epoch32Time()+" - Internet Epoch Time: "+timeClient.getEpochTime()+" - DIFF: "+diff);
-  digitalWrite(CH1, 0);
-  digitalWrite(CH2, 0);
-  digitalWrite(CH3, 0);
-  digitalWrite(CH4, 0);
-  digitalWrite(CH7, 0);
-  digitalWrite(CH8, 0);
+
+  for (byte i = 0; i < 8; i++)
+  {
+    muxDigitalWrite(i, HIGH);
+  }
 }
 
 void handleNotFound(){
@@ -141,20 +132,10 @@ void handleNotFound(){
 void setup(void){
   timeClient.begin();
   setupClock();
-  pinMode(CH1, OUTPUT);
-  pinMode(CH2, OUTPUT);
-  pinMode(CH3, OUTPUT);
-  pinMode(CH4, OUTPUT);
-  pinMode(CH7, OUTPUT);
-  pinMode(CH8, OUTPUT);
-  
-  digitalWrite(CH1, 0);
-  digitalWrite(CH2, 0);
-  digitalWrite(CH3, 0);
-  digitalWrite(CH4, 0);
-  digitalWrite(CH7, 0);
-  digitalWrite(CH8, 0);
+  setupMpx();
 
+  i2cSetup();
+  
   Serial.begin(115200);
   WiFi.begin(ssid, password);
   Serial.println("");
@@ -184,6 +165,69 @@ void setup(void){
 
   server.on("/inline", [](){
     server.send(200, "text/plain", "this works as well");
+  });
+
+  server.on("/send", [](){
+    bool validCh = false;
+    bool validValue = false;
+    int ch = NULL;
+    int value = NULL;
+    for (uint8_t i=0; i<server.args(); i++){
+      if(server.argName(i).equalsIgnoreCase("ch")){
+        if(isValidNumber(server.arg(i))){
+          ch = server.arg(i).toInt();
+          if(ch>=0&&ch<=7){
+            validCh = true;
+          }
+        }
+      }
+      if(server.argName(i).equalsIgnoreCase("value")){
+        Serial.println(server.arg(i));
+        if(isValidNumber(server.arg(i))){
+          value = server.arg(i).toInt();
+          if(value>=0&&value<=1){
+            validValue = true;
+          }
+        }
+      }
+    }
+    Serial.print("ch param ");
+    Serial.println(ch);
+    Serial.print("value param ");
+    Serial.println(value);
+    
+    if(validCh && validValue){
+      int params[] = {ch, value};
+      sendI2CMessage('A', params, 2);
+      server.send(200, "text/plain", "Message sended !!!");
+    }else{
+      server.send(200, "text/plain", "Params required...");
+    }
+  });
+
+  server.on("/toggle", [](){
+    bool validCh = false;
+    int ch = NULL;
+    for (uint8_t i=0; i<server.args(); i++){
+      if(server.argName(i).equalsIgnoreCase("ch")){
+        if(isValidNumber(server.arg(i))){
+          ch = server.arg(i).toInt();
+          if(ch>=0&&ch<=7){
+            validCh = true;
+          }
+        }
+      }
+    }
+    Serial.print("ch param ");
+    Serial.println(ch);
+    
+    if(validCh){
+      int params[] = {ch};
+      sendI2CMessage('B', params, 1);
+      server.send(200, "text/plain", "Message sended !!!");
+    }else{
+      server.send(200, "text/plain", "Params required...");
+    }
   });
 
   server.on("/new", [](){
@@ -234,6 +278,43 @@ void setup(void){
     }
   });
 
+  server.on("/mpx", [](){
+    bool validCh = false;
+    bool validValue = false;
+    int ch = NULL;
+    int value = NULL;
+    for (uint8_t i=0; i<server.args(); i++){
+      if(server.argName(i).equalsIgnoreCase("ch")){
+        if(isValidNumber(server.arg(i))){
+          ch = server.arg(i).toInt();
+          if(ch>=0&&ch<=7){
+            validCh = true;
+          }
+        }
+      }
+      if(server.argName(i).equalsIgnoreCase("value")){
+        Serial.println(server.arg(i));
+        if(isValidNumber(server.arg(i))){
+          value = server.arg(i).toInt();
+          if(value>=0&&value<=1){
+            validValue = true;
+          }
+        }
+      }
+    }
+    Serial.print("ch param ");
+    Serial.println(ch);
+    Serial.print("value param ");
+    Serial.println(value);
+    
+    if(validCh && validValue){
+      muxDigitalWrite(ch, value);
+      server.send(200, "text/plain", "Message sended !!!");
+    }else{
+      server.send(200, "text/plain", "Params required...");
+    }
+  });
+
   server.on("/list", [](){
     String alarmsList = showAlarms();
     Serial.print("Alarms: ");
@@ -259,12 +340,10 @@ boolean isValidNumber(String str){
 
 void setAll(int value){
   Serial.println("Alarms!!!!!!!!!!!!!!");
-  digitalWrite(CH1, value);
-  digitalWrite(CH2, value);
-  digitalWrite(CH3, value);
-  digitalWrite(CH4, value);
-  digitalWrite(CH7, value);
-  digitalWrite(CH8, value);
+  for (byte i = 0; i < 8; i++)
+  {
+    muxDigitalWrite(i, value);
+  }
 }
 
 void loop(void){
